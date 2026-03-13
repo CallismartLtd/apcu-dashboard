@@ -12,25 +12,7 @@ No Composer. No npm. No build step. No external requests. Drop it in and go.
 ---
 
 ## Screenshot
-
-```
-┌─────────────────────────────────────────────────────┐
-│  ⚡ APCu Dashboard          ● Cache active           │
-│  PHP 8.3.6 · APCu 5.1.23   Fri, 13 Mar 2026        │
-├──────────┬──────────┬──────────┬──────────┬─────────┤
-│ Entries  │ Hits     │ Misses   │ Hit Rate │ Uptime  │
-│   1,842  │ 249,301  │  12,048  │   95.4%  │  3d 7h  │
-├──────────────────────────────────────────────────────┤
-│ Memory  62%  ████████████░░░░░░░░                    │
-│ Used: 62.3 MB    Free: 38.4 MB    Total: 100.8 MB   │
-├──────────────────────────────────────────────────────┤
-│  Cache Entries  1842   [🔍 Filter…]  [⊘ Clear Cache] │
-│  Key                  Hits   Size   TTL     Created  │
-│  wp.option.siteurl    🔥 412  1.2 KB  ∞ forever  …  │
-│  wp.post.421           8     3.4 KB  300s       …  │
-└─────────────────────────────────────────────────────┘
-```
-
+![screenshot](apcu-dashboard.png)
 ---
 
 ## Features
