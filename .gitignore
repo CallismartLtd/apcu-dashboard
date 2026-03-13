@@ -1,0 +1,21 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Composer (just in case someone tries to add deps — don't)
+vendor/
+composer.lock
+
+# npm (same reasoning)
+node_modules/
+package-lock.json
+
+# Misc
+*.log
+*.bak
