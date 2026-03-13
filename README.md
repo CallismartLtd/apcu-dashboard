@@ -12,7 +12,9 @@ No Composer. No npm. No build step. No external requests. Drop it in and go.
 ---
 
 ## Screenshot
+
 ![screenshot](apcu-dashboard.png)
+
 ---
 
 ## Features
@@ -21,20 +23,22 @@ No Composer. No npm. No build step. No external requests. Drop it in and go.
 |---|---|
 | **Zero dependencies** | Pure PHP + vanilla JS + inline CSS. No Composer, npm, CDN, or network requests whatsoever. |
 | **Single file** | Everything — PHP logic, HTML, CSS, JS — lives in one `apcu-dashboard.php` file you can `wget` and drop anywhere. |
+| **Ajax operations** | All delete and clear actions run via `fetch()` with no page reload. A spinner appears in the button while the request is in flight, and the stats and table update instantly when it completes. |
+| **Live UI** | The header clock, uptime counter, and "Cache active" pulse all tick every second client-side. The dashboard feels alive, not stale. |
+| **Built-in login system** | Change `APCU_DASH_USER` and `APCU_DASH_PASS` from the defaults to instantly enforce a session-based login wall. No code to uncomment — changing the constants *is* the switch. |
+| **Brute-force protection** | Five consecutive failed login attempts trigger a 5-minute IP lockout, tracked in APCu itself. Remaining attempts and lockout countdown are shown to the user. |
 | **At-a-glance stats** | Entry count, total hits/misses, hit-rate with colour coding, memory usage bar with used/free/total breakdown, and cache uptime. |
-| **Entry table** | Paginated list of all cache keys with per-key hit count, memory size, TTL (forever or countdown in seconds), and creation timestamp. |
+| **Entry table** | Full list of all cache keys with per-key hit count, memory size, TTL (forever or countdown in seconds), and creation timestamp. |
 | **Sort** | Click any column header to sort ascending/descending. Numeric columns (hits, size, TTL, timestamp) sort numerically. |
 | **Live filter** | Type in the search box to instantly filter by key name — no page reload. |
-| **Delete single key** | Per-row delete button with a confirmation dialog. Uses a POST form (not a `GET` link) so browser pre-fetch can't accidentally delete entries. |
-| **Clear all cache** | "Clear Cache" button opens a modal that asks for confirmation before wiping everything. |
-| **POST-redirect-GET** | All write actions (delete, clear) POST and then redirect, so F5 / page refresh never re-submits the form. |
-| **CSRF protection** | Every write form includes a per-installation CSRF token derived with `hash_hmac`. |
+| **Delete single key** | Per-row delete button opens a styled confirmation modal. Confirmed deletes fire via Ajax — no page reload, no browser `alert()`. |
+| **Clear all cache** | "Clear Cache" button opens a modal that shows the exact entry count before asking for confirmation. Also runs via Ajax. |
+| **CSRF protection** | Every write request includes a per-installation CSRF token derived with `hash_hmac`. |
 | **Key prefix dimming** | For dot-namespaced keys (e.g. `wordpress.options.home`) the prefix is visually dimmed so the meaningful suffix stands out. |
 | **Hot key indicator** | Keys with 10+ hits are highlighted with 🔥 and an accent colour. |
-| **Memory colour coding** | Memory bar turns amber at ≥70 % and red at ≥90 %. |
+| **Memory colour coding** | Memory bar turns amber at ≥ 70 % and red at ≥ 90 %. |
 | **Accessibility** | ARIA roles, `aria-sort` on sortable columns, `aria-label` on icon-only buttons, `role="progressbar"` on the memory bar. |
 | **Responsive** | Collapses gracefully on narrow screens. Table scrolls horizontally before breaking layout. |
-| **Optional HTTP auth gate** | A commented-out `PHP_AUTH` block is included — uncomment and set credentials if you can't protect the file via your web server. |
 | **No external fonts** | Uses system-default monospace and sans-serif font stacks (`ui-monospace`, `system-ui`, …). Looks great on every OS. |
 
 ---
@@ -43,7 +47,7 @@ No Composer. No npm. No build step. No external requests. Drop it in and go.
 
 | | |
 |---|---|
-| **PHP** | 7.4 or later (typed properties, `str_contains`, `array_is_list` not used — should work back to 7.1 in practice) |
+| **PHP** | 8.0 or later (uses union types — `int\|float`) |
 | **APCu extension** | `php-apcu` installed and enabled for the correct SAPI (CLI vs FPM vs mod_php — see FAQ) |
 | **Web server** | Apache, Nginx, Caddy, or anything else that can serve `.php` files |
 
@@ -55,10 +59,10 @@ No Composer. No npm. No build step. No external requests. Drop it in and go.
 
 ```bash
 # wget
-wget -O apcu-dashboard.php https://raw.githubusercontent.com/smliser/apcu-dashboard/main/apcu-dashboard.php
+wget -O apcu-dashboard.php https://raw.githubusercontent.com/CallismartLtd/apcu-dashboard/main/apcu-dashboard.php
 
 # or curl
-curl -o apcu-dashboard.php https://raw.githubusercontent.com/smliser/apcu-dashboard/main/apcu-dashboard.php
+curl -o apcu-dashboard.php https://raw.githubusercontent.com/CallismartLtd/apcu-dashboard/main/apcu-dashboard.php
 ```
 
 ### 2. Place the file
@@ -80,7 +84,20 @@ That's it.
 > **This file exposes the full contents of your APCu cache and lets anyone who can reach it delete entries or wipe the whole cache.**  
 > **Never leave it publicly accessible.**
 
-### Option A — Protect via web server (recommended)
+### Option A — Built-in login system (recommended)
+
+Edit the two constants at the top of the file:
+
+```php
+define( 'APCU_DASH_USER', 'your-username' );
+define( 'APCU_DASH_PASS', 'a-long-random-password' );
+```
+
+As soon as both values differ from the defaults (`admin` / `changeme`), the dashboard enforces a full session-based login page. The session cookie is `HttpOnly`, `SameSite=Strict`, and `Secure` on HTTPS.
+
+> Use this only over HTTPS — credentials are sent as a form POST, which is trivially intercepted over plain HTTP.
+
+### Option B — Protect via web server
 
 **Nginx:**
 ```nginx
@@ -100,26 +117,22 @@ location = /apcu-dashboard.php {
 </Files>
 ```
 
-### Option B — HTTP Basic Auth (built-in, zero setup)
-
-Uncomment the auth block near the top of the file and set a username and password:
-
-```php
-define('APCU_DASH_USER', 'admin');
-define('APCU_DASH_PASS', 'a-long-random-password');
-```
-
-> Use this only over HTTPS — Basic Auth sends credentials as base64, which is trivially decoded over plain HTTP.
-
 ### Option C — Keep it out of the web root entirely
 
-Place the file above the document root and symlink or alias it with restricted access.
+Place the file above the document root and alias it with restricted access.
 
 ---
 
 ## Configuration
 
-The file has no configuration file. The only tunable at the top is the optional auth block described above.
+All configuration is at the top of `apcu-dashboard.php`:
+
+```php
+define( 'APCU_DASH_USER', 'admin' );    // change to enable the login wall
+define( 'APCU_DASH_PASS', 'changeme' ); // change to enable the login wall
+```
+
+There is no config file, no database, and no installation step.
 
 ---
 
@@ -127,16 +140,21 @@ The file has no configuration file. The only tunable at the top is the optional 
 
 ### PHP side
 
-1. On every `GET` request the script calls `apcu_cache_info(true)` (stats, no entry data) and `apcu_sma_info()` (memory). Both are very cheap.
-2. For the entry table it calls `apcu_cache_info(false)` to get the full `cache_list` array. On a server with tens of thousands of entries this can be slow — if that describes your setup, consider adding pagination.
-3. Write operations (`delete_key`, `clear_all`) arrive as `POST` requests, are executed, and then `Location:` redirect to the bare URL (Post/Redirect/Get pattern).
-4. The CSRF token is `hash_hmac('sha256', $base_url, php_uname())`. It's deterministic per machine (no session required) but not guessable by an attacker on a different server.
+1. On every request the script calls `apcu_cache_info(true)` (stats, no entry data) and `apcu_sma_info()` (memory). Both are cheap shared-memory reads.
+2. For the entry table it calls `apcu_cache_info(false)` to get the full `cache_list` array, which is serialised into the initial HTML and also available via the Ajax endpoint.
+3. When the request carries `X-Requested-With: XMLHttpRequest`, the script returns `application/json` instead of HTML. Write actions (delete/clear) also respond with a fresh snapshot of stats and entries so the UI can update immediately without a second round-trip.
+4. The CSRF token is `hash_hmac('sha256', $current_url, php_uname())`. It is deterministic per machine (no session required) but not guessable by an attacker on a different server.
+5. Login state is maintained with PHP sessions. The session stores a `hash_hmac`-signed token rather than a plain boolean, so a valid session from one installation cannot be replayed against another.
 
 ### JavaScript side
 
-- **Sort:** rows are extracted from `<tbody>`, sorted in-memory using `Array.prototype.sort`, then appended back. Numeric columns use `data-bytes` / `data-ts` attributes so sort order matches the underlying number, not the formatted string.
-- **Filter:** hides rows using `row.hidden` (toggling the IDL attribute) — no `display` style manipulation needed.
-- **Modal:** a `<div>` overlay toggled with a CSS class. Closes on backdrop click or Escape key.
+- **Ajax:** All write operations use `fetch()` with `X-Requested-With: XMLHttpRequest`. The response JSON is used to re-render the stat cards and table in-place — no page reload occurs.
+- **Spinner:** Each button has a CSS-only spinner element that is shown while a request is in flight and the button is disabled.
+- **Live clock & uptime:** A `setInterval` tick runs every second. The clock is computed client-side from `new Date()`. Uptime is computed by adding elapsed client seconds to the server-rendered initial value — so the counter continues smoothly without any polling.
+- **Table renderer:** After every write, `_render_table()` rebuilds `<tbody>` from the fresh JSON entries array, keeping the displayed data consistent with the server state.
+- **Sort:** Rows are extracted from `<tbody>`, sorted in-memory with `Array.prototype.sort`, then appended back. Numeric columns use `data-bytes` / `data-ts` attributes so sort order matches the underlying number, not the formatted string.
+- **Filter:** Hides rows using `row.hidden` — no `display` style manipulation needed. Filter is re-applied after every table re-render.
+- **Modal:** A `<div>` overlay toggled with a CSS class. Holds `_pending_action` — the params for the confirmed request — so the single confirm button works for both delete and clear operations. Closes on backdrop click or Escape key.
 
 ---
 
@@ -148,13 +166,13 @@ APCu has separate enable flags for CLI and web (FPM/mod_php). Check:
 
 ```bash
 # FPM / mod_php
-php -r "echo ini_get('apc.enabled');"          # should print 1
+php -r "echo ini_get('apc.enabled');"   # should print 1
 
 # Verify in PHP info
 php -i | grep -i apcu
 ```
 
-Also make sure `extension=apcu.so` (or `extension=apcu`) is present in the correct `.ini` file for your web SAPI (often `/etc/php/8.x/fpm/conf.d/` rather than `/etc/php/8.x/cli/conf.d/`).
+Also make sure `extension=apcu` is present in the correct `.ini` file for your web SAPI (often `/etc/php/8.x/fpm/conf.d/` rather than `/etc/php/8.x/cli/conf.d/`).
 
 ### How do I enable APCu for PHP-FPM?
 
@@ -185,9 +203,13 @@ No. CLI PHP uses a different shared-memory segment from web SAPI processes. Cach
 
 Your application re-populated the cache. The dashboard only deletes; it can't prevent your app from caching the value again.
 
+### The delete/clear buttons don't do anything
+
+JavaScript must be enabled. The dashboard degrades gracefully to a full-page POST/redirect/GET flow as a fallback, but the Ajax path requires JS.
+
 ### What PHP versions are supported?
 
-The file uses `declare(strict_types=1)`, union types (`int|float`), and named arguments — features available from **PHP 8.0**. If you need PHP 7.4 compatibility, remove `declare(strict_types=1)` and change the `int|float` union type hint in `fmt_bytes()` to just `float`.
+**PHP 8.0 or later.** The file uses union types (`int|float`) introduced in PHP 8.0. If you need PHP 7.4 compatibility, change the `int|float` hint in `fmt_bytes()` to just `float`.
 
 ---
 
@@ -217,7 +239,7 @@ Please keep the **single-file constraint** — no build step, no `node_modules`,
 
 MIT License
 
-Copyright (c) 2026 Smliser
+Copyright (c) 2026 Callistus Nwachukwu
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
