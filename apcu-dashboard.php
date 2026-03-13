@@ -32,15 +32,27 @@ if ( ! extension_loaded( 'apcu' ) || ! apcu_enabled() ) {
 }
 
 /*
-|-----------------------------------------
-| BASE URL  (used by auth redirects too)
-|-----------------------------------------
+|------------------------------------------------------------------
+| $script_url — the stable, query-string-free URL of this script.
+|
+| PHP_SELF always points at the executing script regardless of
+| whether it sits at the document root, in a sub-directory, or is
+| included from another script. It never carries a query string.
+|
+| This URL is used for every redirect, the login form action,
+| the CSRF token seed, and the JS fetch() endpoint.
+|
+| REQUEST_URI is intentionally not used here because it reflects
+| the caller's full URI including any query string, which would
+| break CSRF validation and fetch targets when this file is
+| included from another script that has its own query params.
+|------------------------------------------------------------------
 */
-$scheme      = ( isset( $_SERVER['HTTPS'] ) && $_SERVER['HTTPS'] !== 'off' ) ? 'https' : 'http';
-$host        = $_SERVER['HTTP_HOST'] ?? 'localhost';
-$uri         = $_SERVER['REQUEST_URI'] ?? '/';
-$current_url = sprintf( '%s://%s%s', $scheme, $host, $uri );
-$is_ajax     = ( $_SERVER['HTTP_X_REQUESTED_WITH'] ?? '' ) === 'XMLHttpRequest';
+$scheme     = ( isset( $_SERVER['HTTPS'] ) && $_SERVER['HTTPS'] !== 'off' ) ? 'https' : 'http';
+$host       = $_SERVER['HTTP_HOST'] ?? 'localhost';
+$uri        = $_SERVER['REQUEST_URI'] ?? '/';
+$script_url = sprintf( '%s://%s%s', $scheme, $host, $uri );
+$is_ajax    = ( $_SERVER['HTTP_X_REQUESTED_WITH'] ?? '' ) === 'XMLHttpRequest';
 
 /*
 |---------
@@ -77,7 +89,7 @@ if ( $auth_enabled ) {
     if ( isset( $_GET['logout'] ) ) {
         $_SESSION = [];
         session_destroy();
-        header( 'Location: ' . $current_url );
+        header( 'Location: ' . $script_url );
         exit;
     }
 
@@ -101,7 +113,7 @@ if ( $auth_enabled ) {
                 session_regenerate_id( true );
                 $_SESSION[ $session_key ] = hash_hmac( 'sha256', session_id(), $session_secret );
                 apcu_delete( $ip_key );
-                header( 'Location: ' . $current_url );
+                header( 'Location: ' . $script_url );
                 exit;
             } else {
                 // Failure — increment counter.
@@ -320,7 +332,7 @@ body {
         </div>
         <?php endif; ?>
 
-        <form method="post" action="<?= htmlspecialchars( $current_url ) ?>" id="loginForm">
+        <form method="post" action="<?= htmlspecialchars( $script_url ) ?>" id="loginForm">
             <input type="hidden" name="_login" value="1">
 
             <div class="field">
@@ -404,7 +416,7 @@ document.getElementById( 'loginCard' ).classList.add( 'shake' );
 | The dashboard JS uses this to refresh the UI without
 | a full page reload.
 */
-$csrf = hash_hmac( 'sha256', $current_url, php_uname() );
+$csrf = hash_hmac( 'sha256', $script_url, php_uname() );
 
 // Helpers (defined early so the JSON path can use them too).
 function fmt_bytes( int|float $b ): string {
@@ -446,14 +458,20 @@ function build_payload(): array {
     $hits      = (int) ( $cache_info['num_hits']   ?? 0 );
     $misses    = (int) ( $cache_info['num_misses'] ?? 0 );
 
+    // APCu's creation_time is seconds elapsed since the cache started,
+    // not a Unix timestamp. Add start_time to convert it to a real epoch
+    // so date() and JS's new Date() both produce the correct wall-clock time.
+    $cache_start = (int) ( $cache_info['start_time'] ?? 0 );
+
     $entries = [];
     foreach ( $entries_raw as $e ) {
+        $raw_created = (int) ( $e['creation_time'] ?? 0 );
         $entries[] = [
-            'key'      => (string) ( $e['info']          ?? '' ),
-            'hits'     => (int)    ( $e['num_hits']       ?? 0  ),
-            'size'     => (int)    ( $e['mem_size']       ?? 0  ),
-            'ttl'      => (int)    ( $e['ttl']            ?? 0  ),
-            'created'  => (int)    ( $e['creation_time']  ?? 0  ),
+            'key'     => (string) ( $e['info']    ?? '' ),
+            'hits'    => (int)    ( $e['num_hits'] ?? 0  ),
+            'size'    => (int)    ( $e['mem_size'] ?? 0  ),
+            'ttl'     => (int)    ( $e['ttl']      ?? 0  ),
+            'created' => $cache_start > 0 ? $cache_start + $raw_created : $raw_created,
         ];
     }
 
@@ -501,7 +519,7 @@ if ( $_SERVER['REQUEST_METHOD'] === 'POST' && ! isset( $_POST['_login'] ) ) {
     } elseif ( isset( $_POST['clear_all'] ) ) {
         apcu_clear_cache();
     }
-    header( 'Location: ' . $current_url );
+    header( 'Location: ' . $script_url );
     exit;
 }
 
@@ -1253,6 +1271,7 @@ tbody tr:nth-child(n+9) { animation-delay: .27s; }
 |----------------------------------
 */
 const _csrf       = <?= json_encode( $csrf ) ?>;
+const _scriptUrl  = <?= json_encode( $script_url ) ?>; // absolute URL to this script, query-string-free
 const _startTime  = <?= (int) ( $stats['start_time'] ) ?>; // Unix epoch — used for client-side uptime ticker
 const _bootTime   = Math.floor( Date.now() / 1000 );       // client-side reference point
 
@@ -1317,7 +1336,7 @@ _tick(); // run immediately so there is no one-second blank
 |----------------------------------
 */
 function _ajax( body_obj ) {
-    return fetch( window.location.pathname, {
+    return fetch( _scriptUrl, {
         method:  'POST',
         headers: {
             'Content-Type':     'application/x-www-form-urlencoded',
@@ -1328,7 +1347,7 @@ function _ajax( body_obj ) {
 }
 
 function _ajax_get() {
-    return fetch( window.location.pathname, {
+    return fetch( _scriptUrl, {
         headers: { 'X-Requested-With': 'XMLHttpRequest' },
     } ).then( r => r.ok ? r.json() : Promise.reject( r.statusText ) );
 }
@@ -1454,13 +1473,18 @@ function _render_table( entries ) {
             ? '<span class="ttl-pill ttl-forever">&#8734; forever</span>'
             : '<span class="ttl-pill ttl-expiring">' + e.ttl.toLocaleString() + 's</span>';
 
+        // JSON.stringify produces double-quoted strings.
+        // _esc() turns those quotes into &quot; so they survive inside an
+        // onclick="..." HTML attribute without breaking the attribute boundary.
+        const key_json_attr = _esc( JSON.stringify( e.key ) );
+
         html += '<tr>'
             + '<td class="key-cell" title="' + _esc( e.key ) + '">' + key_html + '</td>'
             + '<td><span class="hits-badge ' + hits_cls + '">' + hits_icon + e.hits.toLocaleString() + '</span></td>'
             + '<td class="size-cell" data-bytes="' + e.size + '">' + _fmt_bytes( e.size ) + '</td>'
             + '<td>' + ttl_html + '</td>'
             + '<td class="date-cell" data-ts="' + e.created + '">' + _fmt_date( e.created ) + '</td>'
-            + '<td><button type="button" class="del-btn" onclick="openDeleteModal(' + JSON.stringify( e.key ) + ')"'
+            + '<td><button type="button" class="del-btn" onclick="openDeleteModal(' + key_json_attr + ')"'
             + ' aria-label="Delete ' + _esc( e.key ) + '">'
             + '<span class="spinner"></span><span class="del-text">&#10005; delete</span>'
             + '</button></td>'
@@ -1581,16 +1605,22 @@ function closeModal() {
 _confirmBtn.addEventListener( 'click', () => {
     if ( ! _pending_action ) return;
 
+    // Capture now — closeModal() sets _pending_action to null,
+    // so reading it after that throws a TypeError that swallows
+    // the .then() branch and makes the delete look like it failed.
+    const action      = _pending_action;
+    const is_clear    = !! action.clear_all;
+
     _confirmBtn.disabled = true;
     _confirmBtn.classList.add( 'loading' );
 
-    _ajax( _pending_action )
+    _ajax( action )
         .then( data => {
             closeModal();
             _refresh_stats( data );
-            showToast( _pending_action.clear_all ? 'Cache cleared.' : 'Entry deleted.' );
+            showToast( is_clear ? 'Cache cleared.' : 'Entry deleted.' );
         } )
-        .catch( () => {
+        .catch( err => {
             closeModal();
             showToast( 'Request failed. Please try again.', true );
         } )
