@@ -5,7 +5,7 @@
  * A single-file, zero-dependency APCu cache management dashboard.
  * Drop this file into your web root (behind authentication!) and open it.
  *
- * @author    Smliser
+ * @author    Callistus Nwachukwu
  * @license   MIT
  * @link      https://github.com/smliser/apcu-dashboard
  */
@@ -705,18 +705,19 @@ tbody tr:nth-child(n+9) { animation-delay: .27s; }
 </head>
 <body>
 
-<!-- ═══ CLEAR MODAL ═══════════════════════════════════ -->
-<div class="modal-overlay" id="clearModal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+<!-- ═══ CONFIRM MODAL (shared by delete-key and clear-all) ═══ -->
+<div class="modal-overlay" id="confirmModal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
     <div class="modal">
-        <h2 id="modalTitle">Clear all cache?</h2>
-        <p>This will permanently delete all <strong><?= $num_entries ?></strong>
-        cached entr<?= $num_entries === 1 ? 'y' : 'ies' ?>. The action cannot be undone.</p>
+        <h2 id="modalTitle"></h2>
+        <p id="modalBody"></p>
         <div class="modal-actions">
             <button class="btn btn-ghost" onclick="closeModal()" type="button">Cancel</button>
-            <form method="post" action="" style="display:inline">
-                <input type="hidden" name="clear_all" value="1">
+            <!-- Single shared form; JS populates the hidden fields before submit -->
+            <form method="post" action="" id="modalForm" style="display:inline">
                 <input type="hidden" name="csrf" value="<?= htmlspecialchars($csrf) ?>">
-                <button type="submit" class="btn btn-danger">Yes, clear all</button>
+                <input type="hidden" id="modalFieldName"  name="" value="">
+                <input type="hidden" id="modalFieldValue" name="" value="">
+                <button type="submit" id="modalConfirmBtn" class="btn btn-danger">Confirm</button>
             </form>
         </div>
     </div>
@@ -877,13 +878,11 @@ tbody tr:nth-child(n+9) { animation-delay: .27s; }
             </td>
             <td class="date-cell" data-ts="<?= $created ?>"><?= date('Y-m-d H:i:s', $created) ?></td>
             <td>
-                <form method="post" action="" onsubmit="return confirmDelete(<?= htmlspecialchars(json_encode($key)) ?>)">
-                    <input type="hidden" name="delete_key" value="<?= htmlspecialchars($key) ?>">
-                    <input type="hidden" name="csrf" value="<?= htmlspecialchars($csrf) ?>">
-                    <button type="submit" class="del-btn" aria-label="Delete <?= htmlspecialchars($key) ?>">
-                        &#10005; delete
-                    </button>
-                </form>
+                <button type="button" class="del-btn"
+                        onclick="openDeleteModal(<?= htmlspecialchars(json_encode($key)) ?>)"
+                        aria-label="Delete <?= htmlspecialchars($key) ?>">
+                    &#10005; delete
+                </button>
             </td>
         </tr>
         <?php endforeach; ?>
@@ -956,29 +955,58 @@ function updateCount() {
     document.getElementById('visibleCount').textContent = n;
 }
 
-/* ── Modal ────────────────────────────────────────── */
+/* ── Modal (shared for delete-key and clear-all) ─── */
+const _modal      = document.getElementById('confirmModal');
+const _modalTitle = document.getElementById('modalTitle');
+const _modalBody  = document.getElementById('modalBody');
+const _fieldName  = document.getElementById('modalFieldName');
+const _fieldValue = document.getElementById('modalFieldValue');
+const _confirmBtn = document.getElementById('modalConfirmBtn');
+
+function openDeleteModal(key) {
+    _modalTitle.textContent = 'Delete cache entry?';
+    _modalBody.innerHTML    = 'This will permanently remove the key:<br><br>'
+                            + '<code style="word-break:break-all;color:var(--accent)">'
+                            + _esc(key) + '</code>';
+    _confirmBtn.textContent = 'Yes, delete';
+    _fieldName.name         = '';   // only one named field needed
+    _fieldName.value        = '';
+    _fieldValue.name        = 'delete_key';
+    _fieldValue.value       = key;
+    _openModal();
+}
+
 function openClearModal() {
-    const m = document.getElementById('clearModal');
-    m.classList.add('open');
-    m.querySelector('.btn-ghost').focus();
+    _modalTitle.textContent = 'Clear all cache?';
+    _modalBody.innerHTML    = 'This will permanently delete all '
+                            + '<strong><?= $num_entries ?></strong> cached entr'
+                            + '<?= $num_entries === 1 ? 'y' : 'ies' ?>. The action cannot be undone.';
+    _confirmBtn.textContent = 'Yes, clear all';
+    _fieldName.name         = 'clear_all';
+    _fieldName.value        = '1';
+    _fieldValue.name        = '';
+    _fieldValue.value       = '';
+    _openModal();
+}
+
+function _openModal() {
+    _modal.classList.add('open');
+    _modal.querySelector('.btn-ghost').focus();
 }
 
 function closeModal() {
-    document.getElementById('clearModal').classList.remove('open');
+    _modal.classList.remove('open');
 }
 
-document.getElementById('clearModal').addEventListener('click', e => {
-    if (e.target === e.currentTarget) closeModal();
-});
+function _esc(s) {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
 
-document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') closeModal();
-});
+_modal.addEventListener('click', e => { if (e.target === _modal) closeModal(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
 
 /* ── Delete confirm ───────────────────────────────── */
-function confirmDelete(key) {
-    return window.confirm('Delete cache key?\n\n' + key);
-}
+// (removed — handled by modal above)
 
 /* ── Toast ────────────────────────────────────────── */
 function showToast(msg, duration = 2800) {
