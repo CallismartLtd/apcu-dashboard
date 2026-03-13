@@ -4,10 +4,12 @@ A modern, single-file PHP dashboard for managing your APCu in-memory cache.
 No Composer. No npm. No build step. No external requests. Drop it in and go.
 
 > **Why does this exist?**  
-> The classic `apc.php` script was bundled with APC and later with APCu, but it was
-> [removed from the APCu repository](https://github.com/krakjoe/apcu) years ago
-> and never properly replaced. Most server operators are left flying blind with no
-> visibility into what is or isn't cached. This project fills that gap.
+> The official APCu repository ships an `apc.php` management script, but it is a
+> largely unchanged carry-over from the APC era — a wall of tables and raw PHP with
+> no authentication, no modern UI, and no Ajax. It gets the job done in a pinch, but
+> it is not something you would comfortably leave running on a production server or
+> hand to a team-mate. This project is a ground-up replacement: a single file you can
+> drop in, lock down in two lines, and actually enjoy using.
 
 ---
 
