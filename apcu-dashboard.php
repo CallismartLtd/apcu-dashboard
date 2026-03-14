@@ -496,7 +496,8 @@ if ( $is_ajax && $_SERVER['REQUEST_METHOD'] === 'POST' && ! isset( $_POST['_logi
     header( 'Content-Type: application/json; charset=utf-8' );
 
     if ( isset( $_POST['delete_key'] ) && is_string( $_POST['delete_key'] ) ) {
-        apcu_delete( trim( $_POST['delete_key'] ) );
+        $key    = trim( stripslashes( $_POST['delete_key'] ) );
+        apcu_delete( $key );
     } elseif ( isset( $_POST['clear_all'] ) ) {
         apcu_clear_cache();
     }
